@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Node Debugger</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #111;
+      color: #eee;
+      font-family: monospace;
+    }
+
+    header {
+      padding: 15px 20px;
+      background: #1b1b1b;
+      border-bottom: 1px solid #333;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    #status {
+      color: #aaa;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      background: #181818;
+      border-bottom: 1px solid #333;
+    }
+
+    button {
+      background: #292929;
+      border: 1px solid #444;
+      color: #eee;
+      padding: 8px 14px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    button:hover {
+      background: #383838;
+    }
+
+    button:disabled {
+      opacity: .4;
+      cursor: default;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: calc(100vh - 110px);
+    }
+
+    aside {
+      border-right: 1px solid #333;
+      padding: 15px;
+      overflow: auto;
+    }
+
+    section {
+      padding: 15px;
+      min-width: 0;
+    }
+
+    .file {
+      padding: 8px;
+      cursor: pointer;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+
+    .file:hover {
+      background: #222;
+    }
+
+    pre {
+      background: #0b0b0b;
+      border: 1px solid #292929;
+      padding: 15px;
+      overflow: auto;
+      white-space: pre-wrap;
+      min-height: 250px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      background: #090909;
+      color: #eee;
+      border: 1px solid #333;
+      padding: 12px;
+      font-family: monospace;
+      resize: vertical;
+    }
+
+    .row {
+      margin-bottom: 15px;
+    }
+
+    .label {
+      color: #aaa;
+      margin-bottom: 5px;
+    }
+
+    #result {
+      color: #8fd694;
+    }
+
+    #error {
+      color: #ff7777;
+    }
+
+    @media (max-width: 700px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid #333;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>Node.js Inspector — Firefox</h1>
+  <div id="status">Conectando...</div>
+</header>
+
+<div class="toolbar">
+  <button id="connect">Conectar</button>
+  <button id="pause">Pause</button>
+  <button id="resume">Resume</button>
+  <button id="scripts">Scripts</button>
+</div>
+
+<main>
+
+  <aside>
+    <div class="label">Scripts</div>
+    <div id="scriptList"></div>
+  </aside>
+
+  <section>
+
+    <div class="row">
+      <div class="label">Evaluar JavaScript en Node</div>
+
+      <textarea id="expression">process.version</textarea>
+
+      <br><br>
+
+      <button id="evaluate">
+        Ejecutar
+      </button>
+    </div>
+
+    <div class="row">
+      <div class="label">Resultado</div>
+
+      <pre id="result"></pre>
+
+      <div id="error"></div>
+    </div>
+
+    <div class="row">
+      <div class="label">Eventos</div>
+
+      <pre id="events"></pre>
+    </div>
+
+  </section>
+
+</main>
+
+<script>
+
+let socket = null
+let requestId = 0
+
+const pending = new Map()
+
+const status = document.getElementById('status')
+const result = document.getElementById('result')
+const errorBox = document.getElementById('error')
+const events = document.getElementById('events')
+const scriptList = document.getElementById('scriptList')
+
+function log(message) {
+  const time = new Date().toLocaleTimeString()
+
+  events.textContent =
+    `[${time}] ${message}\n` +
+    events.textContent
+}
+
+async function getTarget() {
+
+  const response = await fetch('/json')
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  const targets = await response.json()
+
+  const target = targets.find(item =>
+    item.type === 'node'
+  )
+
+  if (!target) {
+    throw new Error('No se encontró un target Node.js')
+  }
+
+  return target
+}
+
+async function connect() {
+
+  if (socket) {
+    socket.close()
+  }
+
+  errorBox.textContent = ''
+
+  try {
+
+    status.textContent = 'Buscando Node Inspector...'
+
+    const target = await getTarget()
+
+    log(`Target encontrado: ${target.title}`)
+
+    let wsUrl = target.webSocketDebuggerUrl
+
+    /*
+     * El servidor remoto devuelve localhost:9229.
+     * Como tenemos el SSH tunnel, localhost:9229
+     * apunta al servidor remoto.
+     */
+
+    wsUrl = wsUrl.replace(
+      /^ws:\/\/[^/]+/,
+      'ws://127.0.0.1:9229'
+    )
+
+    log(`WebSocket: ${wsUrl}`)
+
+    socket = new WebSocket(wsUrl)
+
+    socket.onopen = () => {
+
+      status.textContent =
+        `Conectado: ${target.title}`
+
+      log('Conexión establecida')
+
+      send('Runtime.enable')
+      send('Debugger.enable')
+
+    }
+
+    socket.onclose = () => {
+
+      status.textContent = 'Desconectado'
+
+      log('WebSocket cerrado')
+
+    }
+
+    socket.onerror = event => {
+
+      errorBox.textContent =
+        'Error conectando al Node Inspector'
+
+      log('WebSocket error')
+
+    }
+
+    socket.onmessage = event => {
+
+      const message = JSON.parse(event.data)
+
+      handleMessage(message)
+
+    }
+
+  } catch (err) {
+
+    errorBox.textContent = err.message
+
+    status.textContent = 'Error'
+
+  }
+}
+
+function send(method, params = {}) {
+
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+
+    throw new Error('No conectado')
+
+  }
+
+  const id = ++requestId
+
+  const message = {
+    id,
+    method,
+    params
+  }
+
+  socket.send(JSON.stringify(message))
+
+  return new Promise((resolve, reject) => {
+
+    pending.set(id, {
+      resolve,
+      reject
+    })
+
+  })
+
+}
+
+function handleMessage(message) {
+
+  if (message.id && pending.has(message.id)) {
+
+    const request = pending.get(message.id)
+
+    pending.delete(message.id)
+
+    if (message.error) {
+
+      request.reject(
+        new Error(
+          message.error.message || 'CDP error'
+        )
+      )
+
+    } else {
+
+      request.resolve(message.result)
+
+    }
+
+    return
+
+  }
+
+  if (message.method) {
+
+    log(`EVENT: ${message.method}`)
+
+    handleEvent(message)
+
+  }
+
+}
+
+function handleEvent(message) {
+
+  if (
+    message.method ===
+    'Debugger.scriptParsed'
+  ) {
+
+    const script = message.params
+
+    addScript(script)
+
+  }
+
+  if (
+    message.method ===
+    'Debugger.paused'
+  ) {
+
+    status.textContent =
+      '⏸ Node pausado'
+
+    log('Debugger pausado')
+
+  }
+
+  if (
+    message.method ===
+    'Debugger.resumed'
+  ) {
+
+    status.textContent =
+      '▶ Node ejecutándose'
+
+  }
+
+}
+
+function addScript(script) {
+
+  if (!script.url) {
+    return
+  }
+
+  const existing =
+    [...scriptList.children]
+      .find(element =>
+        element.dataset.url === script.url
+      )
+
+  if (existing) {
+    return
+  }
+
+  const element =
+    document.createElement('div')
+
+  element.className = 'file'
+
+  element.dataset.url = script.url
+
+  element.textContent = script.url
+
+  element.onclick = () => {
+
+    result.textContent =
+      JSON.stringify(
+        script,
+        null,
+        2
+      )
+
+  }
+
+  scriptList.appendChild(element)
+
+}
+
+async function evaluate() {
+
+  const expression =
+    document.getElementById(
+      'expression'
+    ).value
+
+  result.textContent = ''
+  errorBox.textContent = ''
+
+  try {
+
+    const response =
+      await send(
+        'Runtime.evaluate',
+        {
+          expression,
+          returnByValue: true,
+          awaitPromise: true
+        }
+      )
+
+    result.textContent =
+      JSON.stringify(
+        response,
+        null,
+        2
+      )
+
+  } catch (err) {
+
+    errorBox.textContent =
+      err.message
+
+  }
+
+}
+
+async function pause() {
+
+  try {
+
+    await send('Debugger.pause')
+
+  } catch (err) {
+
+    errorBox.textContent =
+      err.message
+
+  }
+
+}
+
+async function resume() {
+
+  try {
+
+    await send('Debugger.resume')
+
+  } catch (err) {
+
+    errorBox.textContent =
+      err.message
+
+  }
+
+}
+
+async function loadScripts() {
+
+  scriptList.innerHTML = ''
+
+  try {
+
+    await send('Debugger.enable')
+
+  } catch (err) {
+
+    errorBox.textContent =
+      err.message
+
+  }
+
+}
+
+document
+  .getElementById('connect')
+  .addEventListener(
+    'click',
+    connect
+  )
+
+document
+  .getElementById('evaluate')
+  .addEventListener(
+    'click',
+    evaluate
+  )
+
+document
+  .getElementById('pause')
+  .addEventListener(
+    'click',
+    pause
+  )
+
+document
+  .getElementById('resume')
+  .addEventListener(
+    'click',
+    resume
+  )
+
+document
+  .getElementById('scripts')
+  .addEventListener(
+    'click',
+    loadScripts
+  )
+
+connect()
+
+</script>
+
+</body>
+</html>
