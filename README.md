@@ -54,6 +54,57 @@ No Chromium installation is required.
 
 ---
 
+## Installation
+
+### Global installation
+
+Once published to npm:
+
+```bash
+npm install -g foxnode-inspector
+```
+
+Then run:
+
+```bash
+foxnode-inspector
+```
+
+The debugger will be available at:
+
+http://localhost:8080
+
+---
+
+### Development Installation
+
+Clone the repository:
+
+```bash
+git clone git@github.com:ferpalma21/FoxNode-Inspector.git
+cd foxnode-inspector
+```
+
+Run directly:
+
+```bash
+node bin/foxnode-inspector.js
+```
+
+Or create a global development link:
+
+```bash
+npm link
+```
+
+Then:
+
+```bash
+foxnode-inspector
+```
+
+---
+
 ### `index.html`
 
 The Firefox-compatible debugging interface.
@@ -67,6 +118,151 @@ Runs the local HTTP server and exposes the Node.js Inspector target information.
 ### `README.md`
 
 Project documentation.
+
+---
+
+## Configuration
+
+### FoxNode Inspector supports configuration through:
+
+FoxNode Inspector supports configuration through:
+
+1. `.env`
+2. Command-line arguments
+3. Default values
+
+The precedence is:
+
+```text
+.env
+ ↓
+CLI arguments
+ ↓
+defaults
+```
+
+This means that if a value exists in .env, it takes precedence over the command-line argument.
+
+---
+
+## Environment Variables
+
+Create a `.env` file in the directory where FoxNode Inspector is executed:
+
+```env
+PORT=8080
+INSPECTOR_PORT=9229
+```
+
+### `PORT`
+
+Port used by the local FoxNode Inspector web interface.
+
+Default:
+
+```text
+8080
+```
+
+Example:
+
+```env
+PORT=9090
+```
+
+The interface will then be available at:
+
+```text
+http://localhost:9090
+```
+
+---
+
+### `INSPECTOR_PORT`
+
+Local port where the Node.js Inspector is available.
+
+Default:
+
+```text
+9229
+```
+
+Example:
+
+```env
+INSPECTOR_PORT=9230
+```
+
+FoxNode Inspector will connect to:
+
+```text
+127.0.0.1:9230
+```
+
+---
+
+## Command-Line Arguments
+
+If `.env` does not define a value, command-line arguments can be used.
+
+### Inspector port
+
+```bash
+foxnode-inspector --inspector-port 9230
+```
+
+This connects to:
+
+```text
+127.0.0.1:9230
+```
+
+---
+
+### Web interface port
+
+```bash
+foxnode-inspector --port 9090
+```
+
+The debugger will be available at:
+
+```text
+http://localhost:9090
+```
+
+---
+
+### Both ports
+
+```bash
+foxnode-inspector --port 9090 --inspector-port 9230
+```
+
+Result:
+
+```text
+Debugger:  http://localhost:9090
+Inspector: 127.0.0.1:9230
+```
+
+---
+
+### Using defaults
+
+If neither `.env` nor CLI arguments are provided:
+
+```bash
+foxnode-inspector
+```
+
+FoxNode Inspector uses:
+
+```text
+Web interface:  8080
+Node Inspector: 9229
+```
 
 ---
 
@@ -111,25 +307,12 @@ ssh -L 9229:127.0.0.1:9229 root@10.129.117.171
 ```
 ---
 
-# Install FoxNode Inspector
-
-Clone the repository or copy the project files:
-
-```bash
-git clone git@github.com:ferpalma21/FoxNode-Inspector.git
-cd foxnode-inspector
-```
-
-The basic implementation does not require external npm packages.
-
----
-
 # Start the Local Debugger
 
 Start the local server:
 
 ```bash
-node server.js
+foxnode-inspector
 ```
 
 You should see:

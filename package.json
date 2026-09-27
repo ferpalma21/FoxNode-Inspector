@@ -1,13 +1,33 @@
 {
-  "name": "firefox-debugger",
+  "name": "foxnode-inspector",
   "version": "1.0.0",
-  "description": "",
-  "license": "ISC",
-  "author": "",
-  "type": "commonjs",
-  "main": "server.js",
+  "author": "ferpalma21",
+  "description": "A lightweight Node.js remote debugger designed to work with Firefox",
+  "main": "src/server.js",
+  "bin": {
+    "foxnode-inspector": "bin/foxnode-inspector.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "public",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node src/server.js"
+  },
+  "keywords": [
+    "node",
+    "nodejs",
+    "debugger",
+    "inspector",
+    "firefox",
+    "devtools",
+    "remote-debugging"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
   }
 }
